@@ -3,4 +3,5 @@ __pycache__/
 *.pyc
 .streamlit/
 .DS_Store
-
+backend/mnist_cnn.pt
+backend/mnist_data/

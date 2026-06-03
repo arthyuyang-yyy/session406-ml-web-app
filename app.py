@@ -35,7 +35,7 @@ with digit_tab:
             st.info("Draw a digit from 0 to 9.")
         else:
             model_image = processed_digit_image(canvas.image_data)
-            if model_image.max(initial=0) < 1:
+            if model_image.max(initial=0) < 0.05:
                 st.info("Draw a digit from 0 to 9.")
             else:
                 result = predict_digit(canvas.image_data)
@@ -48,10 +48,10 @@ with digit_tab:
                         }
                     }
                 )
-                preview = Image.fromarray((model_image / 16.0 * 255.0).astype("uint8"))
+                preview = Image.fromarray((model_image * 255.0).astype("uint8"))
                 st.image(
                     preview.resize((140, 140), Image.Resampling.NEAREST),
-                    caption="Model input: 8 x 8",
+                    caption="Model input: 28 x 28",
                 )
 
 
