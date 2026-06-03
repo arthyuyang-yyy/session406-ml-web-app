@@ -2,14 +2,15 @@
 
 This repository contains two visual machine-learning web apps for Session 406:
 
-- MNIST-style handwritten digit predictor
+- MNIST-style handwritten digit predictor with 28x28 preprocessing and an
+  augmented image classifier
 - UFO country predictor
 
 The project includes:
 
 - `app.py`: Streamlit frontend with two tabs
 - `backend/main.py`: FastAPI backend for predictions
-- `ml_models.py`: shared model loading and prediction utilities
+- `ml_models.py`: shared preprocessing, model loading, and prediction utilities
 - `docs/index.html`: static GitHub Pages demo
 
 ## Live Web Page
@@ -52,8 +53,9 @@ Use these settings:
 - Main file path: `app.py`
 - Python version: select `3.12` in Advanced settings
 
-The first launch may take longer because the app downloads MNIST, trains the CNN
-once on CPU, and saves the model to `backend/mnist_cnn.pt` in the app runtime.
+The first launch may take a short moment because the digit classifier trains
+once from augmented handwritten digit samples and caches itself as
+`backend/digit_model.joblib` in the app runtime.
 
 ## FastAPI Backend
 

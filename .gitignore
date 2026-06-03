@@ -5,3 +5,4 @@ __pycache__/
 .DS_Store
 backend/mnist_cnn.pt
 backend/mnist_data/
+backend/digit_model.joblib
