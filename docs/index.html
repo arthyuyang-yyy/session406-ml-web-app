@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session 406 ML Web Apps</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #687083;
+      --line: #d8dde8;
+      --panel: #ffffff;
+      --bg: #f5f7fb;
+      --blue: #2563eb;
+      --green: #15803d;
+      --orange: #d97706;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    header {
+      padding: 24px clamp(16px, 4vw, 44px) 16px;
+      border-bottom: 1px solid var(--line);
+      background: #ffffff;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 4vw, 40px);
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+    header p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      max-width: 760px;
+    }
+    main {
+      padding: 24px clamp(16px, 4vw, 44px) 44px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      min-width: 0;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+    .workbench {
+      display: grid;
+      grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      border: 1px solid #111827;
+      background: #000000;
+      touch-action: none;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    button {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 9px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.primary {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: white;
+    }
+    .result {
+      display: grid;
+      gap: 12px;
+    }
+    .metric {
+      padding: 14px;
+      border-radius: 8px;
+      background: #eef4ff;
+      border: 1px solid #c7d8ff;
+    }
+    .metric strong {
+      display: block;
+      font-size: clamp(36px, 7vw, 58px);
+      line-height: 1;
+      letter-spacing: 0;
+    }
+    .metric span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .bars {
+      display: grid;
+      gap: 7px;
+    }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 28px 1fr 52px;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .bar-track {
+      height: 11px;
+      border-radius: 999px;
+      background: #e7eaf1;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--blue);
+      border-radius: inherit;
+      transition: width 180ms ease;
+    }
+    form {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 11px;
+      font: inherit;
+      color: var(--ink);
+      background: #ffffff;
+    }
+    .ufo-output {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .country {
+      padding: 16px;
+      border-radius: 8px;
+      background: #effaf3;
+      border: 1px solid #bce7c8;
+    }
+    .country strong {
+      display: block;
+      font-size: 42px;
+      line-height: 1;
+      letter-spacing: 0;
+      color: var(--green);
+    }
+    .note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      margin-top: 12px;
+    }
+    @media (max-width: 980px) {
+      main { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 660px) {
+      .workbench, .ufo-output, form { grid-template-columns: 1fr; }
+      section { padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Session 406 ML Web Apps</h1>
+    <p>Visual demo for the MNIST digit app and the UFO app. The Python project also includes Streamlit and FastAPI versions for local deployment.</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>MNIST Digit Predictor</h2>
+      <div class="workbench">
+        <div>
+          <canvas id="digitCanvas" width="280" height="280" aria-label="Draw a digit"></canvas>
+          <div class="actions">
+            <button class="primary" id="predictDigit" type="button">Predict</button>
+            <button id="clearDigit" type="button">Clear</button>
+          </div>
+          <p class="note">Draw one digit from 0 to 9. This static page uses template matching so it can run directly on GitHub Pages.</p>
+        </div>
+        <div class="result">
+          <div class="metric">
+            <span>Prediction</span>
+            <strong id="digitValue">-</strong>
+            <span id="digitConfidence">Draw a digit and predict</span>
+          </div>
+          <div class="bars" id="digitBars"></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>UFO Country Predictor</h2>
+      <form id="ufoForm">
+        <label>
+          Duration seconds
+          <input id="seconds" type="number" min="1" max="120" value="30">
+        </label>
+        <label>
+          Latitude
+          <input id="latitude" type="number" min="-90" max="90" step="0.01" value="39.90">
+        </label>
+        <label>
+          Longitude
+          <input id="longitude" type="number" min="-180" max="180" step="0.01" value="-75.10">
+        </label>
+      </form>
+      <div class="actions">
+        <button class="primary" id="predictUfo" type="button">Predict UFO Country</button>
+      </div>
+      <div class="ufo-output">
+        <div class="country">
+          <span>Predicted country</span>
+          <strong id="countryValue">US</strong>
+          <span id="countryConfidence">High confidence</span>
+        </div>
+        <div class="bars" id="ufoBars"></div>
+      </div>
+      <p class="note">The deployed Python version uses scikit-learn. This static version mirrors the same input-output workflow for an always-available browser URL.</p>
+    </section>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("digitCanvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    let drawing = false;
+
+    function resetCanvas() {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 20;
+      ctx.strokeStyle = "#fff";
+    }
+
+    function point(event) {
+      const rect = canvas.getBoundingClientRect();
+      const source = event.touches ? event.touches[0] : event;
+      return {
+        x: (source.clientX - rect.left) * canvas.width / rect.width,
+        y: (source.clientY - rect.top) * canvas.height / rect.height
+      };
+    }
+
+    function startDraw(event) {
+      event.preventDefault();
+      drawing = true;
+      const p = point(event);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+    }
+
+    function moveDraw(event) {
+      if (!drawing) return;
+      event.preventDefault();
+      const p = point(event);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    }
+
+    function endDraw() {
+      drawing = false;
+    }
+
+    canvas.addEventListener("mousedown", startDraw);
+    canvas.addEventListener("mousemove", moveDraw);
+    window.addEventListener("mouseup", endDraw);
+    canvas.addEventListener("touchstart", startDraw, { passive: false });
+    canvas.addEventListener("touchmove", moveDraw, { passive: false });
+    window.addEventListener("touchend", endDraw);
+
+    function makeTemplate(digit) {
+      const temp = document.createElement("canvas");
+      temp.width = 28;
+      temp.height = 28;
+      const t = temp.getContext("2d", { willReadFrequently: true });
+      t.fillStyle = "#000";
+      t.fillRect(0, 0, 28, 28);
+      t.fillStyle = "#fff";
+      t.font = "26px Arial";
+      t.textAlign = "center";
+      t.textBaseline = "middle";
+      t.fillText(String(digit), 14, 15);
+      const data = t.getImageData(0, 0, 28, 28).data;
+      const values = [];
+      for (let i = 0; i < data.length; i += 4) values.push(data[i] / 255);
+      return values;
+    }
+
+    const templates = Array.from({ length: 10 }, (_, i) => makeTemplate(i));
+
+    function getPixels28() {
+      const temp = document.createElement("canvas");
+      temp.width = 28;
+      temp.height = 28;
+      const t = temp.getContext("2d", { willReadFrequently: true });
+      t.drawImage(canvas, 0, 0, 28, 28);
+      const data = t.getImageData(0, 0, 28, 28).data;
+      const values = [];
+      for (let i = 0; i < data.length; i += 4) values.push(data[i] / 255);
+      return values;
+    }
+
+    function softmax(scores) {
+      const max = Math.max(...scores);
+      const exps = scores.map(v => Math.exp(v - max));
+      const sum = exps.reduce((a, b) => a + b, 0);
+      return exps.map(v => v / sum);
+    }
+
+    function predictDigit() {
+      const pixels = getPixels28();
+      const ink = pixels.reduce((a, b) => a + b, 0);
+      if (ink < 4) {
+        renderDigit("-", Array(10).fill(0), "Draw a digit and predict");
+        return;
+      }
+      const scores = templates.map(template => {
+        let distance = 0;
+        for (let i = 0; i < pixels.length; i++) {
+          const diff = pixels[i] - template[i];
+          distance += diff * diff;
+        }
+        return -distance / 18;
+      });
+      const probabilities = softmax(scores);
+      let best = 0;
+      for (let i = 1; i < probabilities.length; i++) {
+        if (probabilities[i] > probabilities[best]) best = i;
+      }
+      renderDigit(best, probabilities, `${Math.round(probabilities[best] * 100)}% confidence`);
+    }
+
+    function renderDigit(value, probabilities, label) {
+      document.getElementById("digitValue").textContent = value;
+      document.getElementById("digitConfidence").textContent = label;
+      const bars = document.getElementById("digitBars");
+      bars.innerHTML = "";
+      probabilities.forEach((prob, index) => {
+        bars.insertAdjacentHTML("beforeend", `
+          <div class="bar-row">
+            <span>${index}</span>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.round(prob * 100)}%"></div></div>
+            <span>${Math.round(prob * 100)}%</span>
+          </div>
+        `);
+      });
+    }
+
+    function ufoProbabilities(seconds, latitude, longitude) {
+      const centers = {
+        US: [35.5, -98.0],
+        CA: [56.0, -106.0],
+        GB: [54.0, -2.5],
+        AU: [-25.0, 134.0],
+        FR: [46.2, 2.2],
+        DE: [51.2, 10.4]
+      };
+      const scores = Object.entries(centers).map(([country, center]) => {
+        const dLat = latitude - center[0];
+        const dLon = (longitude - center[1]) * Math.cos(latitude * Math.PI / 180);
+        const geo = Math.sqrt(dLat * dLat + dLon * dLon);
+        const durationPenalty = Math.abs(seconds - 35) / 180;
+        return [country, -(geo / 16) - durationPenalty];
+      });
+      const values = softmax(scores.map(row => row[1]));
+      return scores.map((row, index) => [row[0], values[index]]);
+    }
+
+    function predictUfo() {
+      const seconds = Number(document.getElementById("seconds").value);
+      const latitude = Number(document.getElementById("latitude").value);
+      const longitude = Number(document.getElementById("longitude").value);
+      const probabilities = ufoProbabilities(seconds, latitude, longitude);
+      probabilities.sort((a, b) => b[1] - a[1]);
+      const [country, confidence] = probabilities[0];
+      document.getElementById("countryValue").textContent = country;
+      document.getElementById("countryConfidence").textContent = `${Math.round(confidence * 100)}% confidence`;
+      const bars = document.getElementById("ufoBars");
+      bars.innerHTML = "";
+      probabilities.forEach(([label, prob]) => {
+        bars.insertAdjacentHTML("beforeend", `
+          <div class="bar-row">
+            <span>${label}</span>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.round(prob * 100)}%; background: var(--green)"></div></div>
+            <span>${Math.round(prob * 100)}%</span>
+          </div>
+        `);
+      });
+    }
+
+    document.getElementById("predictDigit").addEventListener("click", predictDigit);
+    document.getElementById("clearDigit").addEventListener("click", () => {
+      resetCanvas();
+      renderDigit("-", Array(10).fill(0), "Draw a digit and predict");
+    });
+    document.getElementById("predictUfo").addEventListener("click", predictUfo);
+
+    resetCanvas();
+    renderDigit("-", Array(10).fill(0), "Draw a digit and predict");
+    predictUfo();
+  </script>
+</body>
+</html>
+
