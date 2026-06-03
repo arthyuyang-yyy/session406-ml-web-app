@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import numpy as np
 import streamlit as st
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 
-from ml_models import predict_digit, predict_ufo
+from ml_models import predict_digit, predict_ufo, processed_digit_image
 
 
 st.set_page_config(page_title="Session 406 ML Apps", page_icon="ML", layout="wide")
@@ -35,10 +34,8 @@ with digit_tab:
         if canvas.image_data is None:
             st.info("Draw a digit from 0 to 9.")
         else:
-            image = Image.fromarray(canvas.image_data.astype("uint8")).convert("L")
-            image = image.resize((28, 28))
-            pixels = np.array(image).astype(float).reshape(-1)
-            if pixels.max(initial=0) < 10:
+            model_image = processed_digit_image(canvas.image_data)
+            if model_image.max(initial=0) < 1:
                 st.info("Draw a digit from 0 to 9.")
             else:
                 result = predict_digit(canvas.image_data)
@@ -51,7 +48,11 @@ with digit_tab:
                         }
                     }
                 )
-                st.image(image.resize((140, 140)), caption="Model input: 28 x 28")
+                preview = Image.fromarray((model_image / 16.0 * 255.0).astype("uint8"))
+                st.image(
+                    preview.resize((140, 140), Image.Resampling.NEAREST),
+                    caption="Model input: 8 x 8",
+                )
 
 
 with ufo_tab:

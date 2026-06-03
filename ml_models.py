@@ -5,14 +5,14 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image
 from sklearn.datasets import load_digits
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.svm import SVC
 
 
-_digit_model: RandomForestClassifier | None = None
+_digit_model = None
 _ufo_model = None
 _ufo_encoder: LabelEncoder | None = None
 _ufo_accuracy: float | None = None
@@ -33,7 +33,7 @@ class UfoPrediction:
     model_accuracy: float
 
 
-def _get_digit_model() -> RandomForestClassifier:
+def _get_digit_model():
     global _digit_model
     if _digit_model is None:
         digits = load_digits()
@@ -44,38 +44,68 @@ def _get_digit_model() -> RandomForestClassifier:
             random_state=42,
             stratify=digits.target,
         )
-        model = RandomForestClassifier(n_estimators=220, random_state=42)
+        model = make_pipeline(
+            StandardScaler(),
+            SVC(gamma=0.001, C=10, probability=True, random_state=42),
+        )
         model.fit(x_train, y_train)
         _digit_model = model
     return _digit_model
 
 
-def predict_digit(pixels: list[float] | np.ndarray) -> DigitPrediction:
+def processed_digit_image(pixels: list[float] | np.ndarray) -> np.ndarray:
+    """Return the 8x8 grayscale image that is passed to the digit model."""
     arr = np.asarray(pixels)
     if arr.ndim == 3 and arr.shape[-1] in {3, 4}:
         image = Image.fromarray(np.clip(arr, 0, 255).astype("uint8")).convert("RGBA")
         background = Image.new("RGBA", image.size, (0, 0, 0, 255))
         image = Image.alpha_composite(background, image).convert("L")
-        image = image.resize((8, 8), Image.Resampling.LANCZOS)
-        arr = np.asarray(image, dtype=np.float32).reshape(64)
-    else:
-        arr = arr.astype(np.float32, copy=False)
-        if arr.size == 784:
-            image = Image.fromarray(
-                np.clip(arr.reshape(28, 28), 0, 255).astype("uint8")
-            )
-            image = image.resize((8, 8), Image.Resampling.LANCZOS)
-            arr = np.asarray(image, dtype=np.float32).reshape(64)
-        elif arr.size == 64:
-            arr = arr.reshape(64)
-        else:
-            raise ValueError("Digit input must contain RGBA canvas data, or 64 or 784 pixel values.")
+        gray = np.asarray(image, dtype=np.uint8)
+        foreground = gray > 20
 
-    if arr.max(initial=0) > 16:
-        arr = arr / 255.0 * 16.0
+        if foreground.any():
+            ys, xs = np.where(foreground)
+            top, bottom = int(ys.min()), int(ys.max()) + 1
+            left, right = int(xs.min()), int(xs.max()) + 1
+            height = bottom - top
+            width = right - left
+            padding = max(8, int(max(height, width) * 0.20))
+            top = max(0, top - padding)
+            bottom = min(gray.shape[0], bottom + padding)
+            left = max(0, left - padding)
+            right = min(gray.shape[1], right + padding)
+            image = Image.fromarray(gray[top:bottom, left:right])
+
+        image.thumbnail((8, 8), Image.Resampling.LANCZOS)
+        centered = Image.new("L", (8, 8), 0)
+        offset = ((8 - image.width) // 2, (8 - image.height) // 2)
+        centered.paste(image, offset)
+        return np.asarray(centered, dtype=np.float32) / 255.0 * 16.0
+
+    arr = arr.astype(np.float32, copy=False)
+    if arr.size == 784:
+        image = Image.fromarray(
+            np.clip(arr.reshape(28, 28), 0, 255).astype("uint8")
+        )
+        image = image.resize((8, 8), Image.Resampling.LANCZOS)
+        arr = np.asarray(image, dtype=np.float32)
+        if arr.max(initial=0) > 16:
+            arr = arr / 255.0 * 16.0
+        return arr
+    if arr.size == 64:
+        arr = arr.reshape(8, 8)
+        if arr.max(initial=0) > 16:
+            arr = arr / 255.0 * 16.0
+        return arr.astype(np.float32, copy=False)
+
+    raise ValueError("Digit input must contain RGBA canvas data, or 64 or 784 pixel values.")
+
+
+def predict_digit(pixels: list[float] | np.ndarray) -> DigitPrediction:
+    arr = processed_digit_image(pixels)
+    features = arr.reshape(1, 64)
 
     model = _get_digit_model()
-    features = arr.reshape(1, 64)
     probabilities = model.predict_proba(features)[0]
     digit = int(np.argmax(probabilities))
     return DigitPrediction(
