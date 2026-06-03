@@ -3,14 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import joblib
 import numpy as np
 from PIL import Image
-from sklearn.datasets import load_digits
-from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import LabelEncoder, StandardScaler
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
 
 
 _digit_model = None
@@ -18,7 +19,10 @@ _ufo_model = None
 _ufo_encoder: LabelEncoder | None = None
 _ufo_accuracy: float | None = None
 _MODEL_DIR = Path(__file__).resolve().parent / "backend"
-_DIGIT_MODEL_PATH = _MODEL_DIR / "digit_model.joblib"
+_DIGIT_MODEL_PATH = _MODEL_DIR / "mnist_cnn.pt"
+_LEGACY_DIGIT_MODEL_PATH = _MODEL_DIR / "digit_model.joblib"
+_MNIST_DATA_DIR = _MODEL_DIR / "mnist_data"
+_DEVICE = torch.device("cpu")
 
 
 @dataclass(frozen=True)
@@ -36,26 +40,84 @@ class UfoPrediction:
     model_accuracy: float
 
 
+class MnistCnn(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(32 * 7 * 7, 64),
+            nn.ReLU(),
+            nn.Linear(64, 10),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.features(x)
+        x = torch.flatten(x, 1)
+        return self.classifier(x)
+
+
 def _get_digit_model():
     global _digit_model
     if _digit_model is None:
+        _remove_legacy_digit_model_cache()
+        model = MnistCnn().to(_DEVICE)
         if _DIGIT_MODEL_PATH.exists():
-            _digit_model = joblib.load(_DIGIT_MODEL_PATH)
+            state_dict = torch.load(_DIGIT_MODEL_PATH, map_location=_DEVICE)
+            model.load_state_dict(state_dict)
+            model.eval()
+            _digit_model = model
             return _digit_model
 
-        x, y = _digit_training_data()
-        model = ExtraTreesClassifier(
-            n_estimators=300,
-            max_features="sqrt",
-            min_samples_leaf=1,
-            n_jobs=-1,
-            random_state=42,
-        )
-        model.fit(x, y)
         _MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        joblib.dump(model, _DIGIT_MODEL_PATH)
+        _train_digit_model(model)
+        torch.save(model.state_dict(), _DIGIT_MODEL_PATH)
+        model.eval()
         _digit_model = model
     return _digit_model
+
+
+def _remove_legacy_digit_model_cache() -> None:
+    if _LEGACY_DIGIT_MODEL_PATH.exists():
+        try:
+            _LEGACY_DIGIT_MODEL_PATH.unlink()
+        except OSError:
+            pass
+
+
+def _train_digit_model(model: MnistCnn, epochs: int = 3) -> None:
+    torch.manual_seed(42)
+    train_dataset = datasets.MNIST(
+        root=str(_MNIST_DATA_DIR),
+        train=True,
+        download=True,
+        transform=transforms.ToTensor(),
+    )
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=128,
+        shuffle=True,
+        num_workers=0,
+    )
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    model.train()
+
+    for _ in range(epochs):
+        for images, labels in train_loader:
+            images = images.to(_DEVICE)
+            labels = labels.to(_DEVICE)
+            optimizer.zero_grad()
+            loss = criterion(model(images), labels)
+            loss.backward()
+            optimizer.step()
 
 
 def _normalize_grayscale(arr: np.ndarray) -> np.ndarray:
@@ -94,32 +156,6 @@ def _center_digit(image: Image.Image, output_size: int = 28, target_extent: int 
     return canvas
 
 
-def _image_to_features(image: Image.Image) -> np.ndarray:
-    centered = _center_digit(image)
-    return (np.asarray(centered, dtype=np.float32) / 255.0).reshape(-1)
-
-
-def _digit_training_data() -> tuple[np.ndarray, np.ndarray]:
-    digits = load_digits()
-    features: list[np.ndarray] = []
-    labels: list[int] = []
-    shifts = [(-2, 0), (2, 0), (0, -2), (0, 2), (0, 0)]
-
-    for pixels, label in zip(digits.images, digits.target):
-        base = Image.fromarray((pixels / 16.0 * 255.0).astype("uint8"), mode="L")
-        base = base.resize((28, 28), Image.Resampling.LANCZOS)
-
-        variants = [base, base.rotate(-10, fillcolor=0), base.rotate(10, fillcolor=0)]
-        for variant in variants:
-            for dx, dy in shifts:
-                shifted = Image.new("L", variant.size, 0)
-                shifted.paste(variant, (dx, dy))
-                features.append(_image_to_features(shifted))
-                labels.append(int(label))
-
-    return np.asarray(features, dtype=np.float32), np.asarray(labels, dtype=np.int64)
-
-
 def processed_digit_image(pixels: list[float] | np.ndarray) -> np.ndarray:
     """Return the normalized 28x28 grayscale image passed to the digit model."""
     arr = np.asarray(pixels)
@@ -148,8 +184,10 @@ def processed_digit_image(pixels: list[float] | np.ndarray) -> np.ndarray:
 def predict_digit(pixels: list[float] | np.ndarray) -> DigitPrediction:
     arr = processed_digit_image(pixels)
     model = _get_digit_model()
-    features = arr.reshape(1, -1)
-    probabilities = model.predict_proba(features)[0]
+    tensor = torch.from_numpy(arr).unsqueeze(0).unsqueeze(0).to(_DEVICE)
+    with torch.no_grad():
+        logits = model(tensor)
+        probabilities = torch.softmax(logits, dim=1).squeeze(0).cpu().numpy()
 
     digit = int(probabilities.argmax())
     return DigitPrediction(

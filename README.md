@@ -2,8 +2,8 @@
 
 This repository contains two visual machine-learning web apps for Session 406:
 
-- MNIST-style handwritten digit predictor with 28x28 preprocessing and an
-  augmented image classifier
+- MNIST handwritten digit predictor with 28x28 preprocessing and a small
+  PyTorch CNN
 - UFO country predictor
 
 The project includes:
@@ -53,9 +53,9 @@ Use these settings:
 - Main file path: `app.py`
 - Python version: select `3.12` in Advanced settings
 
-The first launch may take a short moment because the digit classifier trains
-once from augmented handwritten digit samples and caches itself as
-`backend/digit_model.joblib` in the app runtime.
+The first launch may take a short moment because the digit classifier downloads
+MNIST, trains a small CPU-only CNN for 3 epochs, and caches itself as
+`backend/mnist_cnn.pt` in the app runtime.
 
 ## FastAPI Backend
 

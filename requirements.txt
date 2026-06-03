@@ -1,6 +1,7 @@
 streamlit==1.41.1
 streamlit-drawable-canvas==0.9.3
 numpy==1.26.4
+torch
+torchvision
 scikit-learn==1.5.2
 pillow==10.4.0
-joblib==1.4.2
