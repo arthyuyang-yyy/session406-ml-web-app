@@ -6,3 +6,4 @@ __pycache__/
 backend/mnist_cnn.pt
 backend/mnist_data/
 backend/digit_model.joblib
+backend/ufo_model.pkl

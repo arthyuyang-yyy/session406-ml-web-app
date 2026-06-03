@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import csv
+import pickle
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 import torch
@@ -22,7 +25,16 @@ _MODEL_DIR = Path(__file__).resolve().parent / "backend"
 _DIGIT_MODEL_PATH = _MODEL_DIR / "mnist_cnn.pt"
 _LEGACY_DIGIT_MODEL_PATH = _MODEL_DIR / "digit_model.joblib"
 _MNIST_DATA_DIR = _MODEL_DIR / "mnist_data"
+_UFO_DATA_PATH = _MODEL_DIR / "data" / "ufos.csv"
+_UFO_MODEL_PATH = _MODEL_DIR / "ufo_model.pkl"
 _DEVICE = torch.device("cpu")
+_COUNTRY_NAMES = {
+    "au": "Australia",
+    "ca": "Canada",
+    "de": "Germany",
+    "gb": "UK",
+    "us": "US",
+}
 
 
 @dataclass(frozen=True)
@@ -198,27 +210,29 @@ def predict_digit(pixels: list[float] | np.ndarray) -> DigitPrediction:
 
 
 def _ufo_training_data() -> tuple[np.ndarray, np.ndarray]:
-    rows = [
-        (15, 40.7, -74.0, "us"),
-        (25, 34.0, -118.2, "us"),
-        (50, 47.6, -122.3, "us"),
-        (10, 43.7, -79.4, "ca"),
-        (35, 49.3, -123.1, "ca"),
-        (55, 51.0, -114.1, "ca"),
-        (20, 51.5, -0.1, "gb"),
-        (45, 53.5, -2.2, "gb"),
-        (30, 55.9, -3.2, "gb"),
-        (18, -33.9, 151.2, "au"),
-        (42, -37.8, 144.9, "au"),
-        (58, -27.5, 153.0, "au"),
-        (12, 48.8, 2.3, "fr"),
-        (38, 45.8, 4.8, "fr"),
-        (52, 43.6, 1.4, "fr"),
-        (16, 52.5, 13.4, "de"),
-        (40, 48.1, 11.6, "de"),
-        (54, 50.9, 6.9, "de"),
-    ]
-    x = np.array([(seconds, lat, lon) for seconds, lat, lon, _ in rows], dtype=float)
+    rows: list[tuple[float, float, float, str]] = []
+    with _UFO_DATA_PATH.open(newline="", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            try:
+                seconds = float(row["duration (seconds)"])
+                latitude = float(row["latitude"])
+                longitude = float(row["longitude"])
+            except (KeyError, TypeError, ValueError):
+                continue
+
+            country = (row.get("country") or "").strip().lower()
+            if country not in _COUNTRY_NAMES:
+                continue
+            if not 1 <= seconds <= 60:
+                continue
+
+            rows.append((seconds, latitude, longitude, country))
+
+    if not rows:
+        raise RuntimeError(f"No UFO training rows found in {_UFO_DATA_PATH}.")
+
+    x = np.array([(seconds, lat, lon) for seconds, lat, lon, _ in rows], dtype=np.float64)
     y = np.array([country for _, _, _, country in rows])
     return x, y
 
@@ -226,17 +240,42 @@ def _ufo_training_data() -> tuple[np.ndarray, np.ndarray]:
 def _get_ufo_model():
     global _ufo_model, _ufo_encoder, _ufo_accuracy
     if _ufo_model is None:
+        if _UFO_MODEL_PATH.exists():
+            with _UFO_MODEL_PATH.open("rb") as file:
+                cached = pickle.load(file)
+            _ufo_model = cached["model"]
+            _ufo_encoder = cached["encoder"]
+            _ufo_accuracy = float(cached["accuracy"])
+            return _ufo_model, _ufo_encoder, _ufo_accuracy
+
         x, labels = _ufo_training_data()
         encoder = LabelEncoder()
         y = encoder.fit_transform(labels)
+        x_train, x_test, y_train, y_test = train_test_split(
+            x,
+            y,
+            test_size=0.2,
+            random_state=0,
+            stratify=y,
+        )
         model = make_pipeline(
             StandardScaler(),
-            LogisticRegression(max_iter=1000, random_state=42),
+            LogisticRegression(max_iter=1000, random_state=0),
         )
-        model.fit(x, y)
+        model.fit(x_train, y_train)
         _ufo_model = model
         _ufo_encoder = encoder
-        _ufo_accuracy = float(model.score(x, y))
+        _ufo_accuracy = float(model.score(x_test, y_test))
+        _MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        with _UFO_MODEL_PATH.open("wb") as file:
+            pickle.dump(
+                {
+                    "model": _ufo_model,
+                    "encoder": _ufo_encoder,
+                    "accuracy": _ufo_accuracy,
+                },
+                file,
+            )
     return _ufo_model, _ufo_encoder, _ufo_accuracy
 
 
@@ -246,9 +285,10 @@ def predict_ufo(seconds: float, latitude: float, longitude: float) -> UfoPredict
     features = np.array([[seconds, latitude, longitude]], dtype=float)
     probabilities = model.predict_proba(features)[0]
     class_index = int(np.argmax(probabilities))
-    country = str(encoder.inverse_transform([class_index])[0])
+    country_code = str(encoder.inverse_transform([class_index])[0])
+    country = _COUNTRY_NAMES.get(country_code, country_code.upper())
     prob_map = {
-        str(label): float(probabilities[i])
+        _COUNTRY_NAMES.get(str(label), str(label).upper()): float(probabilities[i])
         for i, label in enumerate(encoder.classes_)
     }
     return UfoPrediction(
