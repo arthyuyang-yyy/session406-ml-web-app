@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import streamlit as st
-from PIL import Image, ImageOps
+from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 
 from ml_models import predict_digit, predict_ufo
@@ -36,13 +36,12 @@ with digit_tab:
             st.info("Draw a digit from 0 to 9.")
         else:
             image = Image.fromarray(canvas.image_data.astype("uint8")).convert("L")
-            image = ImageOps.invert(image)
             image = image.resize((28, 28))
             pixels = np.array(image).astype(float).reshape(-1)
             if pixels.max(initial=0) < 10:
                 st.info("Draw a digit from 0 to 9.")
             else:
-                result = predict_digit(pixels)
+                result = predict_digit(canvas.image_data)
                 st.metric("Prediction", result.digit, f"{result.confidence:.1%} confidence")
                 st.bar_chart(
                     {
@@ -67,4 +66,3 @@ with ufo_tab:
     st.metric("Predicted country", result.country.upper(), f"{result.confidence:.1%} confidence")
     st.write(f"Training accuracy: `{result.model_accuracy:.2%}`")
     st.bar_chart({"probability": result.probabilities})
-

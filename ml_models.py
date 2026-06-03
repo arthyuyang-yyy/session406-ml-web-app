@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from PIL import Image
 from sklearn.datasets import load_digits
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -50,22 +51,32 @@ def _get_digit_model() -> RandomForestClassifier:
 
 
 def predict_digit(pixels: list[float] | np.ndarray) -> DigitPrediction:
-    arr = np.asarray(pixels, dtype=np.float32)
-    if arr.size == 784:
-        arr = arr.reshape(28, 28)
-        rows = np.array_split(arr, 8, axis=0)
-        arr = np.array([np.array_split(row, 8, axis=1) for row in rows])
-        arr = arr.mean(axis=(2, 3)).reshape(64)
-    elif arr.size == 64:
-        arr = arr.reshape(64)
+    arr = np.asarray(pixels)
+    if arr.ndim == 3 and arr.shape[-1] in {3, 4}:
+        image = Image.fromarray(np.clip(arr, 0, 255).astype("uint8")).convert("RGBA")
+        background = Image.new("RGBA", image.size, (0, 0, 0, 255))
+        image = Image.alpha_composite(background, image).convert("L")
+        image = image.resize((8, 8), Image.Resampling.LANCZOS)
+        arr = np.asarray(image, dtype=np.float32).reshape(64)
     else:
-        raise ValueError("Digit input must contain either 64 or 784 pixel values.")
+        arr = arr.astype(np.float32, copy=False)
+        if arr.size == 784:
+            image = Image.fromarray(
+                np.clip(arr.reshape(28, 28), 0, 255).astype("uint8")
+            )
+            image = image.resize((8, 8), Image.Resampling.LANCZOS)
+            arr = np.asarray(image, dtype=np.float32).reshape(64)
+        elif arr.size == 64:
+            arr = arr.reshape(64)
+        else:
+            raise ValueError("Digit input must contain RGBA canvas data, or 64 or 784 pixel values.")
 
     if arr.max(initial=0) > 16:
         arr = arr / 255.0 * 16.0
 
     model = _get_digit_model()
-    probabilities = model.predict_proba([arr])[0]
+    features = arr.reshape(1, 64)
+    probabilities = model.predict_proba(features)[0]
     digit = int(np.argmax(probabilities))
     return DigitPrediction(
         digit=digit,
@@ -134,4 +145,3 @@ def predict_ufo(seconds: float, latitude: float, longitude: float) -> UfoPredict
         probabilities=prob_map,
         model_accuracy=float(accuracy or 0.0),
     )
-
